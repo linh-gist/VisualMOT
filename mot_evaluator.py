@@ -27,6 +27,13 @@ def write_results(filename, results):
     logger.info('save results to {}'.format(filename))
 
 
+def get_color(idx):
+    idx = (idx + 1) * 50
+    color = ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
+
+    return color
+
+
 def write_results_no_score(filename, results):
     save_format = '{frame},{id},{x1},{y1},{w},{h},-1,-1,-1,-1\n'
     directory = os.path.dirname(filename)  # Extract the directory path from the file path
@@ -296,13 +303,12 @@ class MOTEvaluator:
                         if self.show_image:
                             l, t = int(tlwh[0]), int(tlwh[1])
                             r, b = int(tlwh[0] + tlwh[2]), int(tlwh[1] + tlwh[3])
-                            cxy = (int(tlwh[0] + tlwh[2] / 2), int(tlwh[1] + tlwh[3] / 2))
                             # draw bbox
-                            img0 = cv2.circle(img0, cxy, radius=8, color=(255, 255, 255), thickness=-1)
-                            img0 = cv2.rectangle(img0, (l, t), (r, b), color=(255, 255, 255), thickness=2)
-                            img0 = cv2.putText(img0, str(tid), org=cxy, fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                                               fontScale=0.65,
-                                               color=(0, 255, 255), thickness=2)
+                            color = get_color(tid)
+                            img0 = cv2.circle(img0, (l, t), radius=8, color=color, thickness=-1)
+                            img0 = cv2.rectangle(img0, (l, t), (r, b), color=color, thickness=2)
+                            img0 = cv2.putText(img0, str(tid), org=(l, t), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                               fontScale=0.65, color=(0, 255, 255), thickness=2)
                 # save results
                 results.append((frame_id + 1, online_tlwhs, online_ids))
                 if self.show_image:

@@ -161,7 +161,7 @@ class KalmanBoxTracker(object):
                 [0, 0, 0, 1, 0, 0, 0],  # r
                 [0, 0, 0, 0, a11, a12, 0],  # dx
                 [0, 0, 0, 0, a21, a22, 0],  # dy
-                [0, 0, 0, 0, 0, 0, 1]  # ds
+                [0, 0, 0, 0, 0, 0, abs(a11 * a22 - a21 * a12)]  # ds
             ])
             self.kf.x = np.dot(J, state_org) + np.array([[tx], [ty], [0], [0], [0], [0], [0]])  # -state
             self.kf.P = J @ P @ J.T
