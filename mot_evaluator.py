@@ -12,6 +12,9 @@ from tracking_utils.evaluation import Evaluator
 import motmetrics as mm
 import trackeval
 import sys
+from efforce.metrics.test_eff import Test_eff
+from efforce.main import load_file, pretty_print
+
 
 def write_results(filename, results):
     save_format = '{frame},{id},{x1},{y1},{w},{h},{s},-1,-1,-1\n'
@@ -329,6 +332,44 @@ class MOTEvaluator:
         evaluate_trackeval(seqs_train, train_dir, self.args.result_dir)
         # MOT17 Evaluation
         mot17_evaluate(self.args.data_dir, self.args.result_dir)
+
+        # compute TEM (Tracking Effort Measure), Detection-aware multi-object tracking evaluation
+        train_dir, test_dir, seqs_train, seqs_test = mot17(self.args.data_dir)
+        train_dir, test_dir, seqs_train, seqs_test = mot17(self.args.data_dir)
+        # metric_obj = Test_eff()
+        # pretty_print(metric_obj.names(), 'str', header=['Detector', 'Tracker', 'Sequence'])
+        # print('------------------------------------------------------------------------------------------------')
+        # all_results = np.zeros((len(seqs_train), len(metric_obj.names())))
+        tem = np.zeros((len(seqs_train)))
+        for idx, s_name in enumerate(seqs_train):
+            metric_obj = Test_eff()
+            #
+            gt_path = os.path.join(train_dir, s_name, 'gt/gt.txt')
+            track_path = os.path.join(self.args.result_dir, s_name + '.txt')
+            # load files
+            gt_file, K = load_file(gt_path, 'gt')
+            track_file, _ = load_file(track_path, 'trc')
+            npz_lines = np.load(dets_path + "/" + s_name.replace('7', '6')[0:8] + ".npz")
+            n_frames = int(len(npz_lines.files) / 2)
+            det_file = {}
+            for frame_id in range(n_frames):
+                try:
+                    bboxs, reidfeat = npz_lines[str(frame_id) + '_det'], npz_lines[str(frame_id) + '_feat']
+                except:
+                    bboxs, reidfeat = np.empty((0, 4)), np.empty((0, 128))  # no detection
+                bboxs = bboxs[bboxs[:, 4] > self.args.track_thresh]
+                bboxs[:, 2:4] -= bboxs[:, 0:2]  # xyxy to xywh
+                bboxs[:, 1:5] = bboxs[:, 0:4]
+                bboxs[:, 0] = -1
+                det_file[frame_id + 1] = bboxs
+            # compute TEM (Tracking Effort Measure)
+            out = metric_obj.evaluate(gt_file, det_file, track_file, dets_path, tracker_name)
+            tem[idx] = out[0]
+            #
+            # values = out[:len(metric_obj.names())]
+            # all_results[idx] = np.array(out[:len(metric_obj.names())])
+            # pretty_print(values, 'flt', header=[dets_path, tracker_name, s_name])
+        print("TEM (Tracking Effort Measure)", f"Mean: {np.average(tem)}", f"STD: {np.std(tem)}")
     ### END
 
 
