@@ -1,8 +1,8 @@
-
 import os
 import numpy as np
 
 from abc import ABC, abstractmethod
+
 
 class Efforce(ABC):
 
@@ -10,22 +10,20 @@ class Efforce(ABC):
 
         self.prev_gt = None
         self.prev_tr = None
-        self.traces  = {}
+        self.traces = {}
 
         self.files_open = {}
 
-
     def evaluate(self, v, ud, ut, detector, tracker):
 
-        self.v  = v
+        self.v = v
         self.ud = ud
         self.ut = ut
-        
-        self.K  = len(v)
+
+        self.K = len(v)
 
         self.detector = detector
-        self.tracker  = tracker
-
+        self.tracker = tracker
 
         intra = self.intra_frame()
         inter = self.inter_frame()
@@ -33,8 +31,6 @@ class Efforce(ABC):
         values = self.join_metrics(intra, inter)
 
         return values
-
-
 
     @abstractmethod
     def cost_matrix(self, v1, v2):
@@ -56,32 +52,23 @@ class Efforce(ABC):
     def join_metrics(self, intra, inter):
         pass
 
-
-
     def IDSW(self, tr, gt):
 
         cost, row, col, _ = self.cost_matrix(tr[:, 1:], gt[:, 1:])
 
-        matched_gt_ids      = gt[col, 0].astype(int)
+        matched_gt_ids = gt[col, 0].astype(int)
         matched_tracker_ids = tr[row, 0].astype(int)
 
         prev_matched_tracker_ids = self.prev_traces[matched_gt_ids]
 
         is_idsw = (np.logical_not(np.isnan(prev_matched_tracker_ids))) & (
-                  np.not_equal(matched_tracker_ids, prev_matched_tracker_ids))
+            np.not_equal(matched_tracker_ids, prev_matched_tracker_ids))
 
         self.prev_traces[matched_gt_ids] = matched_tracker_ids
 
-
         # print('->', len(gt), len(col), ':', len(col) / len(gt))
 
-
         return np.sum(is_idsw), cost, row, col
-
-
-    
-
-
 
     @staticmethod
     def coord2center(v):
@@ -93,7 +80,6 @@ class Efforce(ABC):
 
         return v2[:, :2]
 
-
     @staticmethod
     def coord2corner(v):
 
@@ -104,10 +90,8 @@ class Efforce(ABC):
 
         return v2
 
-
     @staticmethod
     def get_iou(v1, v2):
-    
 
         xA = max(v1[0], v2[0])
         yA = max(v1[1], v2[1])
@@ -119,10 +103,10 @@ class Efforce(ABC):
         boxAArea = abs((v1[2] - v1[0]) * (v1[3] - v1[1]))
         boxBArea = abs((v2[2] - v2[0]) * (v2[3] - v2[1]))
 
-        iou = interArea / float(boxAArea + boxBArea - interArea)
+        denom = float(boxAArea + boxBArea - interArea)
+        iou = interArea / denom if denom != 0 else 0.0
 
         return iou
-
 
     @staticmethod
     def iou(v1, v2):
@@ -132,11 +116,8 @@ class Efforce(ABC):
         for i, v1_bbx in enumerate(v1):
 
             for j, v2_bbx in enumerate(v2):
-
                 matrix[i, j] = 1 - Efforce.get_iou(v1_bbx, v2_bbx)
-
 
         return matrix
 
 
-        

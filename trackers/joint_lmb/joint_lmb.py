@@ -3,7 +3,7 @@ from scipy.stats.distributions import chi2
 from scipy.special import logsumexp
 import numpy as np
 import lap
-
+from ..bytetrack.cmc import GMC
 from .utils import gate_meas_gms_idx, kalman_update_multiple, esf
 from cpputils import bboxes_ioi_xyah_back2front, ComputePD, Murty, esf, bbox_iou_xyah, bboxes_ioi_xyah_back2front_all
 
@@ -106,15 +106,31 @@ class Target:
             self.feat = feat
         self.gatemeas = np.empty(0, dtype=int)
 
-    def predict_gms(self, model):
+    def predict_gms(self, model, H=None):
         self.r = model.P_S * self.r
 
         plength = self.m.shape[1]
         m_predict = np.zeros(self.m.shape)
         P_predict = np.zeros(self.P.shape)
+        if H is not None:
+            a11, a12, tx = H[0]
+            a21, a22, ty = H[1]
+            J = np.array([
+                [a11, a12, 0, 0, 0, 0, 0, 0],  # x
+                [a21, a22, 0, 0, 0, 0, 0, 0],  # y
+                [0, 0, abs(a11 * a22 - a21 * a12), 0, 0, 0, 0, 0],  # s
+                [0, 0, 0, np.sqrt(a11 ** 2 + a21 ** 2), 0, 0, 0, 0],  # r
+                [0, 0, 0, 0, a11, a12, 0, 0],  # dx
+                [0, 0, 0, 0, a21, a22, 0, 0],  # dy
+                [0, 0, 0, 0, 0, 0, abs(a11 * a22 - a21 * a12), 0],  # ds
+                [0, 0, 0, 0, 0, 0, 0, np.sqrt(a11 ** 2 + a21 ** 2)]  # ds
+            ])
         for idxp in range(plength):
             m_temp = np.dot(model.F, self.m[:, idxp])
             P_temp = model.Q + np.dot(model.F, np.dot(self.P[:, :, idxp], model.F.T))
+            if H is not None:
+                m_temp = np.dot(J, m_temp) + np.array([tx, ty, 0, 0, 0, 0, 0, 0])  # -state
+                P_temp = J @ P_temp @ J.T
             m_predict[:, idxp] = m_temp
             P_predict[:, :, idxp] = P_temp
 
@@ -219,7 +235,7 @@ class Target:
 
 
 class LMB:
-    def __init__(self, track_thresh, use_feat=True):
+    def __init__(self, track_thresh, use_gmc=False, use_feat=True):
         # initial prior
         self.tt_lmb = []
         self.tt_birth = []
@@ -232,6 +248,8 @@ class LMB:
         self.tt_lmb_xyah = np.array([])  # LMB tracks state [x,y,a,h]
         self.tt_lmb_feat = np.array([])  # LMB tracks reid feature
         self.pd = ComputePD('./trackers/joint_lmb/compute_pd.fis')
+        self.use_gmc = use_gmc
+        self.gmc = GMC(method="cmc", verbose=None)
         self.sampling = Murty()
         self.id = 0
         self.average_area = 1
@@ -239,7 +257,7 @@ class LMB:
         self.frame = 0
         self.track_thresh = track_thresh
 
-    def jointlmbpredictupdate(self, model, z, feat, k):
+    def jointlmbpredictupdate(self, model, z, feat, k, image):
         #  generate birth tracks
         if k == 0:
             for idx in range(z.shape[0]):
@@ -249,8 +267,11 @@ class LMB:
             self.average_area = sum(z[:, 2] * z[:, 3] ** 2) / z.shape[0]
 
         # generate surviving tracks
+        H = None
+        if self.use_gmc:
+            H = self.gmc.applyCMC(image)
         for target in self.tt_lmb:
-            target.predict_gms(model)
+            target.predict_gms(model, H)
         m = z.shape[0]  # number of measurements
         if m == 0:  # see MOT16-12, frame #445
             return  # no measurement to update, only predict existing tracks
@@ -323,7 +344,12 @@ class LMB:
             assign_meas[meas_idx, hidx] = 1
             glmb_nextupdate_w[hidx] = omega_z
 
-        glmb_nextupdate_w = np.exp(glmb_nextupdate_w - logsumexp(glmb_nextupdate_w))  # normalize weights
+        # glmb_nextupdate_w = np.exp(glmb_nextupdate_w - logsumexp(glmb_nextupdate_w))  # normalize weights
+        if glmb_nextupdate_w.size == 0:
+            # no valid hypotheses this frame — handle as "no update" case
+            glmb_nextupdate_w = np.array([])  # or however your code represents an empty GLMB
+        else:
+            glmb_nextupdate_w = np.exp(glmb_nextupdate_w - logsumexp(glmb_nextupdate_w))
 
         self.assign_prob = assign_meas @ glmb_nextupdate_w
 
@@ -491,7 +517,7 @@ class LMB:
         z[:, 2] = z[:, 2] / z[:, 3]
 
         # joint predict and update, results in GLMB, convert to LMB
-        self.jointlmbpredictupdate(self.model, z, feat, self.frame)
+        self.jointlmbpredictupdate(self.model, z, feat, self.frame, img)
 
         # pruning, truncation and track cleanup
         self.clean_lmb(self.model, self.frame)

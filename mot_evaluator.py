@@ -14,6 +14,8 @@ import trackeval
 import sys
 from efforce.metrics.test_eff import Test_eff
 from efforce.main import load_file, pretty_print
+# from cython_bbox import bbox_overlaps
+# import lap
 
 
 def write_results(filename, results):
@@ -90,6 +92,32 @@ def dancetrack(root):
     test_dir = root + '/DanceTrack/test/'
     return train_dir, val_dir, test_dir, seqs_train, seqs_val, seqs_test
 
+def crowdtrack(root):
+    train_numbers = [5, 8, 12, 18, 29, 1, 6, 9, 13, 2, 3, 3, 7, 11, 14, 26, 32]
+    test_numbers = [2, 15, 19, 23, 27, 33, 4, 16, 21, 24, 28, 17, 22, 25, 31]
+    seqs_train = [f"track{num:04d}" for num in train_numbers]
+    seqs_test = [f"track{num:04d}" for num in test_numbers]
+    train_dir = root + '/CrowdTrack/train/'
+    test_dir = root + '/CrowdTrack/test/'
+    return train_dir, test_dir, seqs_train, seqs_test
+
+def bft(root):
+    seqs_train = ['Gr5006', 'An1008', 'An3003', 'An5001', 'Ci3002', 'Gr3005', 'Gr5011', 'Ci3003', 'Gr3007', 'An6002',
+                  'Ps5001', 'Gr3006', 'An1012', 'Gr5001', 'Ci2006', 'An3010', 'An6006', 'An1007', 'Gr5008', 'An3007',
+                  'Pa1001', 'Gr5004', 'An1001', 'An1010', 'An1005', 'Gr3003', 'An1011', 'An3008', 'Ac4001', 'Gr5012',
+                  'An3014', 'An1004', 'An3015', 'An3012', 'Ci3004', 'Pa5001', 'An2001', 'Gr5010', 'Gr3004', 'Ci2005',
+                  'Ps4003', 'Gr5002', 'An6005', 'Gr5007', 'Ac2002']
+    seqs_val = ['An6013', 'An6012', 'Su2006', 'An1003', 'An3004', 'Ac4002', 'An3013', 'Su2001', 'Pa1003', 'An6009',
+                'Su2002', 'Gr5009', 'An3018', 'Su2005', 'Ci3001', 'Gr3001', 'Ac4003', 'Gr5014', 'Ci2001', 'An3009',
+                'An3005', 'An6008', 'An6011', 'An3006', 'Ci6001']
+    seqs_test = ['An1009', 'Ch1001', 'Gr5013', 'Ph3001', 'Gr5003', 'An3016', 'Su2004', 'Co5003', 'An3011', 'Ps4001',
+                 'An6007', 'Ac2001', 'Ci2003', 'An6010', 'Co5002', 'Su2007', 'An3001', 'Su2003', 'Co5001', 'An1002',
+                 'Ps4002', 'An6003', 'Gr5005', 'Gr3008', 'Pe1001', 'Ap3001', 'Gr3002', 'An3002', 'Ci2002', 'An3017',
+                 'Fa5001', 'Ci2004', 'An1006', 'Pa1002', 'An6001', 'An6004']
+    train_dir = root + '/BFT/train'
+    val_dir = root + '/BFT/val'
+    test_dir = root + '/BFT/test'
+    return train_dir, val_dir, test_dir, seqs_train, seqs_val, seqs_test
 
 def mot20(root):
     seqs_train = ['MOT20-01', 'MOT20-02', 'MOT20-03', 'MOT20-05']
@@ -191,10 +219,11 @@ def evaluate_trackeval(seqs, gt_folder, trackers_folder):
     output_res, _ = evaluator.evaluate(dataset_list, metrics_list)
     sys.stdout = sys.__stdout__  # Restore stdout
     com_hota = np.average(output_res['MotChallenge2DBox']['']['COMBINED_SEQ']['pedestrian']['HOTA']['HOTA'])
+    com_assa = np.average(output_res['MotChallenge2DBox']['']['COMBINED_SEQ']['pedestrian']['HOTA']['AssA'])
     com_mota = output_res['MotChallenge2DBox']['']['COMBINED_SEQ']['pedestrian']['CLEAR']['MOTA']
     com_idf1 = output_res['MotChallenge2DBox']['']['COMBINED_SEQ']['pedestrian']['Identity']['IDF1']
     idsw = output_res['MotChallenge2DBox']['']['COMBINED_SEQ']['pedestrian']['CLEAR']['IDSW']
-    print(trackers_folder, f"HOTA {com_hota} IDF1 {com_idf1} MOTA {com_mota} IDSW {idsw}")
+    print(trackers_folder, f"HOTA {com_hota} AssA {com_assa} IDF1 {com_idf1} MOTA {com_mota} IDSW {idsw}")
 
 
 class MOTEvaluator:
@@ -272,7 +301,7 @@ class MOTEvaluator:
                 tracker = BYTETracker(self.args)
             elif tracker_name == "LMB":
                 from trackers.joint_lmb.joint_lmb import LMB
-                tracker = LMB(track_thresh=self.args.track_thresh, use_feat=True)
+                tracker = LMB(track_thresh=self.args.track_thresh, use_gmc=self.args.use_gmc, use_feat=True)
             else:
                 raise ValueError(f"Unknown tracker: {tracker_name}")
             ##################################################################################################
@@ -280,8 +309,10 @@ class MOTEvaluator:
             results = []
             npz_lines = np.load(dets_path + "/" + video_name + ".npz")
             n_frames = int(len(npz_lines.files) / 2)
-            img_path = os.path.join(train_dir, video_name)
-            files = sorted(glob.glob(osp.join(img_path, 'img1') + '/*.jpg'))
+            img_path = os.path.join(train_dir, video_name, 'img1')
+            files = sorted(glob.glob(img_path + '/*.jpg'))
+            # files = sorted(glob.glob(img_path, '*.jpg') + glob.glob(img_path, '*.png'))
+            total_time = 0
             for frame_id in range(n_frames):
                 img0 = cv2.imread(files[frame_id])
                 # obtain detection for each frame
@@ -291,7 +322,9 @@ class MOTEvaluator:
                     bboxs, reidfeat = np.empty((0, 4)), np.empty((0, 128))  # no detection
                 dets = np.column_stack((bboxs, reidfeat))
                 # run tracking
+                start_tracking = time.time()
                 online_targets = tracker.update(dets, img0)
+                total_time = total_time + time.time() - start_tracking
                 online_tlwhs = []
                 online_ids = []
                 online_scores = []
@@ -327,6 +360,7 @@ class MOTEvaluator:
                 if frame_id == n_frames - 1:
                     result_filename = os.path.join(self.args.result_dir, '{}.txt'.format(video_name))
                     write_results_no_score(result_filename, results)
+            print(video_name, "Tracking FPS: ", round(1.0 / (total_time / n_frames), 2))
         # MOT16 Evaluation
         # evaluate_motmetrics(train_dir, self.args.result_dir, seqs_train)
         evaluate_trackeval(seqs_train, train_dir, self.args.result_dir)
@@ -334,7 +368,6 @@ class MOTEvaluator:
         mot17_evaluate(self.args.data_dir, self.args.result_dir)
 
         # compute TEM (Tracking Effort Measure), Detection-aware multi-object tracking evaluation
-        train_dir, test_dir, seqs_train, seqs_test = mot17(self.args.data_dir)
         train_dir, test_dir, seqs_train, seqs_test = mot17(self.args.data_dir)
         # metric_obj = Test_eff()
         # pretty_print(metric_obj.names(), 'str', header=['Detector', 'Tracker', 'Sequence'])

@@ -97,7 +97,11 @@ def kalman_update_single(z, H, R, m, P):
     z_mu = z - mu
     qz_temp = multivariate_normal.pdf(z, mean=mu, cov=S)
     m_temp = m + np.dot(K, z_mu)
-    P_temp = np.dot((np.eye(len(P)) - np.dot(K, H)), P)
+    # P_temp = np.dot((np.eye(len(P)) - np.dot(K, H)), P)
+    # P = (I-KH)P(I-KH)' + KRK' # Joseph form
+    KH = np.dot(K, H)
+    I_KH = np.eye(KH.shape[0]) - KH
+    P_temp = np.dot(np.dot(I_KH, P), I_KH.T) + np.dot(np.dot(K, R), K.T)
 
     return qz_temp, m_temp, P_temp
 

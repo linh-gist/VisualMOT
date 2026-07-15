@@ -30,7 +30,7 @@ def compute_average_similarity(detectors, seqs, conf=0.5):
 
 def visual_similarity(frame=100, conf=0.3):
     # Create a 4x4 grid of subplots
-    fig, axes = plt.subplots(3, 4, figsize=(20, 20))  # Adjust figsize for clarity
+    fig, axes = plt.subplots(3, 4, figsize=(12, 7))  # Adjust figsize for clarity
     axes = axes.flatten()  # Flatten the 2D array of axes for easy iteration
 
     # Iterate over detectors and populate the heatmaps
@@ -79,7 +79,7 @@ def visual_similarity(frame=100, conf=0.3):
         axes[idx].axis('off')
     # Adjust layout to prevent overlap
     # plt.subplots_adjust(hspace=5.5)  # Default is ~0.2; increase for wider spacing
-    plt.tight_layout(h_pad=5.0, rect=[0, 0, 1, 0.97])
+    plt.tight_layout(h_pad=1.5, w_pad=2.0, rect=[0, 0, 1, 0.97])
     # Save the figure as a PDF file
     plt.savefig("reid_similarity_heatmaps.pdf", format="pdf", bbox_inches="tight")
     plt.show()
